@@ -7,7 +7,7 @@
   (:use #:cl #:alexandria)
   (:export
    #:make-radial-julia
-   #:make-radial-julia-animation
-   #:random-walk-radial-julia-animation
+;;   #:make-radial-julia-animation
+;;   #:random-walk-radial-julia-animation
    ))
 
