@@ -172,7 +172,6 @@
 (defun rj-fft (&key
                  (mp3-file-name)
                  (output-directory "/Users/jeremiahlarocco/images/fractals/julia-animation/")
-                 (frame-count 360)
                  (start-point (complex (- (random 1.0) 0.75) (random 0.5)))
                  (width 800)
                  (height 800)
@@ -183,8 +182,9 @@
                  (tmax (* 2 pi))
                  (fps 30)
                  (thread-count 4)
-                 (lower-bound (complex -0.5 -0.5))
-                 (upper-bound (complex 0.5 0.5)))
+                 (change-direction-prob 0.005)
+                 (lower-bound (complex -1.0 -1.0))
+                 (upper-bound (complex 1.0 1.0)))
   
   (declare (type fixnum width height frame-count iterations thread-count)
            (type simple-string output-directory mp3-file-name)
@@ -199,6 +199,8 @@
          (description-file-name (format nil "~adescription.lisp" real-dir-name))
 
          (the-mp3 (read-mp3-file mp3-file-name))
+         (real-dir 1.0)
+         (imag-dir 1.0)
          (current-location start-point)
          (song-duration (mp3-file-duration-in-seconds the-mp3))
          (total-frames (ceiling (* song-duration fps)))
@@ -207,10 +209,13 @@
     (declare 
              (type (complex double-float) current-location)
              (type simple-string real-dir-name description-file-name))
+
+    (format t "Creating animation with ~a frames...~%" total-frames)
+
     (with-open-file (outf description-file-name :direction :output :if-exists :supersede :if-does-not-exist :create)
       (declare (type stream outf))
       (format outf "(list ~%")
-      (dotimes (frame frame-count)
+      (dotimes (frame total-frames)
         (declare (type fixnum frame))
         (let* ((output-file-name (format nil "~aframe~8,'0d.png" real-dir-name frame))
                (win-center (ceiling (max 0 (- (* 44100 (interpolate 0.0 song-duration frame total-frames))
@@ -219,8 +224,29 @@
                (left-fft-data (bordeaux-fft:windowed-fft (mp3-file-left-channel the-mp3) win-center fft-window-size))
                (right-fft-data (bordeaux-fft:windowed-fft (mp3-file-right-channel the-mp3) win-center fft-window-size)))
 
-          (setf current-location (complex (/ (abs (aref left-fft-data 3)) fft-window-size)
-                                          (/ (abs (aref right-fft-data 3)) fft-window-size)))
+          (incf current-location (complex (/ (* real-dir (abs (aref left-fft-data 3))) fft-window-size)
+                                          (/ (* imag-dir (abs (aref right-fft-data 3))) fft-window-size)))
+
+          (when (> change-direction-prob (random 1.0))
+            (setf real-dir (- real-dir)))
+
+          (when (> change-direction-prob (random 1.0))
+            (setf imag-dir (- imag-dir)))
+
+          (when (> (realpart current-location) (realpart upper-bound))
+            (format t "Reversing real-dir~%")
+            (setf real-dir (- real-dir)))
+          (when (< (realpart current-location) (realpart lower-bound))
+            (format t "Reversing real-dir~%")
+            (setf real-dir (- real-dir)))
+
+          (when (> (imagpart current-location) (imagpart upper-bound))
+            (format t "Reversing imag-dir~%")
+            (setf imag-dir (- imag-dir)))
+          (when (< (imagpart current-location) (imagpart lower-bound))
+            (format t "Reversing imag-dir~%")
+            (setf imag-dir (- imag-dir)))
+
           (format t "Drawing Julia set: ~a~%" current-location)
           (format outf "~a~%" current-location)
           (make-radial-julia :file-name output-file-name
