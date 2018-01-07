@@ -4,10 +4,13 @@
 
 (defpackage #:radial-julia
   (:nicknames #:rj)
-  (:use #:cl #:alexandria)
+  (:use #:cl #:alexandria #:anim-utils)
   (:export
    #:make-radial-julia
    #:make-radial-julia-animation
    #:random-walk-radial-julia-animation
+
+   #:rj-fft
+
    ))
 

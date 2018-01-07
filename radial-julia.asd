@@ -8,7 +8,8 @@
   :license "ISC"
   :depends-on (#:png
                #:alexandria
-               #:work-queue)
+               #:work-queue
+               #:anim-utils)
   :serial t
   :components ((:file "package")
                (:file "radial-julia")))

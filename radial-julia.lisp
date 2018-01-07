@@ -4,7 +4,7 @@
 
 (in-package #:radial-julia)
 
-(declaim (optimize (speed 1) (safety 3) (compilation-speed 0) (debug 3)))
+(declaim (optimize (speed 3) (safety 1) (compilation-speed 0) (debug 1)))
 
 (declaim (ftype (function 
                  (fixnum fixnum double-float double-float ) double-float) map-val))
@@ -13,7 +13,7 @@
                  (fixnum (simple-array (unsigned-byte 8)) (complex double-float) fixnum fixnum double-float double-float double-float double-float fixnum))
                 draw-radial-julia-line))
          
-(declaim (inline map-val set-pixel-ong black-and-white draw-radial-julia-line))
+(declaim (inline map-val set-pixel-ong black-and-white draw-radial-julia-line smooth-colors))
                  
 (defun map-val (x width xmin xmax)
   "Map a value from the range 0,width to the range xmin,xmax"
@@ -35,6 +35,14 @@
   (let ((val (* 255 (mod iters 2))))
     (values val val val)))
 
+(defun smooth-colors (iters iterations i j width height)
+  (declare (ignorable iters iterations i j width height))
+  (declare (type fixnum iters iterations i j width height))
+  (let ((tval (/ (coerce iters 'double-float) (coerce iterations 'double-float) 1.0)))
+    (values (truncate (* 255 (- 1 tval)))
+            (truncate (+ (* 127 (sin (* 8 pi tval))) 127))
+            (truncate (+ (* 127 (cos (* pi tval))) 127)))))
+
 (defun draw-radial-julia-line (i png c width height rmin rmax tmin tmax iterations)
   (declare (type fixnum i width height iterations)
            (type (complex double-float) c)
@@ -47,7 +55,7 @@
                (type double-float rp))
       (let ((iters
              (do* ((tp (map-val j width tmax tmin))
-                   (cp (complex (* rp (sin tp)) (* rp (cos tp))) (+ (* cp cp) c))
+                   (cp (complex (* rp (sin tp)) (* rp (cos tp))) (+ (* cp cp cp) c))
                    (iter 0 (incf iter)))
                   ((or (>= iter iterations) (> (abs cp) 4.0)) iter)
                (declare (type fixnum iter)
@@ -56,7 +64,7 @@
                         (type double-float tp))
                )))
         (declare (type fixnum iters))
-        (multiple-value-call #'set-pixel-png png i j (black-and-white iters iterations i j width height))))))
+        (multiple-value-call #'set-pixel-png png i j (smooth-colors iters iterations i j width height))))))
 
 (defun make-radial-julia (&key
                             (c #C(0.25 0.25))
@@ -116,7 +124,7 @@
          (description-file-name (format nil "~adescription.lisp" real-dir-name)))
     (declare (type double-float real-dir imag-dir)
              (type (complex double-float) current-location)
-             (type simple-string real-dir-name))
+             (type simple-string real-dir-name description-file-name))
     (with-open-file (outf description-file-name :direction :output :if-exists :supersede :if-does-not-exist :create)
       (declare (type stream outf))
       (format outf "(list ~%")
@@ -136,9 +144,9 @@
                              :thread-count thread-count)
 
           (incf current-location (complex
-                                  (* real-dir (the double-float (random dt)))
-                                  (* imag-dir (the double-float (random dt)))))
-          (format t "~a ~a ~a ~a ~a ~%" current-location upper-bound lower-bound real-dir imag-dir)
+                                  (* real-dir (random dt))
+                                  (* imag-dir (random dt))))
+          ;;(format t "~a ~a ~a ~a ~a ~%" current-location upper-bound lower-bound real-dir imag-dir)
           (when (> change-direction-prob (random 1.0))
             (setf real-dir (- real-dir)))
 
@@ -160,3 +168,71 @@
             (setf imag-dir (- imag-dir)))
           ))
       (format outf ")~%"))))
+
+(defun rj-fft (&key
+                 (mp3-file-name)
+                 (output-directory "/Users/jeremiahlarocco/images/fractals/julia-animation/")
+                 (frame-count 360)
+                 (start-point (complex (- (random 1.0) 0.75) (random 0.5)))
+                 (width 800)
+                 (height 800)
+                 (iterations 80)
+                 (rmin 0.0)
+                 (rmax 1.25)
+                 (tmin 0.0)
+                 (tmax (* 2 pi))
+                 (fps 30)
+                 (thread-count 4)
+                 (lower-bound (complex -0.5 -0.5))
+                 (upper-bound (complex 0.5 0.5)))
+  
+  (declare (type fixnum width height frame-count iterations thread-count)
+           (type simple-string output-directory mp3-file-name)
+           (type (complex double-float) start-point lower-bound upper-bound)
+           (type double-float rmin rmax tmin tmax)
+           (ignorable upper-bound lower-bound))
+  (let* (
+         (real-dir-name (ensure-directories-exist
+                        (if (char=  #\/ (aref output-directory (- (length output-directory) 1)))
+                            output-directory
+                            (concatenate 'string output-directory "/"))))
+         (description-file-name (format nil "~adescription.lisp" real-dir-name))
+
+         (the-mp3 (read-mp3-file mp3-file-name))
+         (current-location start-point)
+         (song-duration (mp3-file-duration-in-seconds the-mp3))
+         (total-frames (ceiling (* song-duration fps)))
+         (fft-window-size 1024)
+         )
+    (declare 
+             (type (complex double-float) current-location)
+             (type simple-string real-dir-name description-file-name))
+    (with-open-file (outf description-file-name :direction :output :if-exists :supersede :if-does-not-exist :create)
+      (declare (type stream outf))
+      (format outf "(list ~%")
+      (dotimes (frame frame-count)
+        (declare (type fixnum frame))
+        (let* ((output-file-name (format nil "~aframe~8,'0d.png" real-dir-name frame))
+               (win-center (ceiling (max 0 (- (* 44100 (interpolate 0.0 song-duration frame total-frames))
+                                              (round (/ fft-window-size 2))))))
+               
+               (left-fft-data (bordeaux-fft:windowed-fft (mp3-file-left-channel the-mp3) win-center fft-window-size))
+               (right-fft-data (bordeaux-fft:windowed-fft (mp3-file-right-channel the-mp3) win-center fft-window-size)))
+
+          (setf current-location (complex (/ (abs (aref left-fft-data 3)) fft-window-size)
+                                          (/ (abs (aref right-fft-data 3)) fft-window-size)))
+          (format t "Drawing Julia set: ~a~%" current-location)
+          (format outf "~a~%" current-location)
+          (make-radial-julia :file-name output-file-name
+                             :width width :height height
+                             :c current-location
+                             :rmin rmin
+                             :rmax rmax
+                             :tmin tmin
+                             :tmax tmax
+                             :iterations iterations
+                             :thread-count thread-count)))
+      (format outf ")~%"))))
+
+
+
