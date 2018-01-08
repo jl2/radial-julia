@@ -12,5 +12,7 @@
 
    #:rj-fft
 
+   #:make-movie
+
    ))
 

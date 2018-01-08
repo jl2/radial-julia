@@ -7,15 +7,15 @@
 (declaim (optimize (speed 3) (safety 1) (compilation-speed 0) (debug 1)))
 
 (declaim (ftype (function 
-                 (fixnum fixnum double-float double-float ) double-float) map-val))
+                 (fixnum fixnum double-float double-float ) double-float) j-map-val))
 
 (declaim (ftype (function
                  (fixnum (simple-array (unsigned-byte 8)) (complex double-float) fixnum fixnum double-float double-float double-float double-float fixnum))
                 draw-radial-julia-line))
          
-(declaim (inline map-val set-pixel-ong black-and-white draw-radial-julia-line smooth-colors))
+(declaim (inline j-map-val set-pixel-ong black-and-white draw-radial-julia-line smooth-colors))
                  
-(defun map-val (x width xmin xmax)
+(defun j-map-val (x width xmin xmax)
   "Map a value from the range 0,width to the range xmin,xmax"
   (declare (type fixnum x width))
   (declare (type double-float xmin xmax))
@@ -48,14 +48,14 @@
            (type (complex double-float) c)
            (type double-float rmin rmax tmin tmax)
            (type (simple-array (unsigned-byte 8)) png))
-  (let ((rp (map-val i height rmin rmax)))
+  (let ((rp (j-map-val i height rmin rmax)))
     (dotimes (j width)
       
       (declare (type fixnum j)
                (type double-float rp))
       (let ((iters
-             (do* ((tp (map-val j width tmax tmin))
-                   (cp (complex (* rp (sin tp)) (* rp (cos tp))) (+ (* cp cp cp) c))
+             (do* ((tp (j-map-val j width tmax tmin))
+                   (cp (complex (* rp (sin tp)) (* rp (cos tp))) (+ (* cp cp) c))
                    (iter 0 (incf iter)))
                   ((or (>= iter iterations) (> (abs cp) 4.0)) iter)
                (declare (type fixnum iter)
@@ -64,7 +64,7 @@
                         (type double-float tp))
                )))
         (declare (type fixnum iters))
-        (multiple-value-call #'set-pixel-png png i j (smooth-colors iters iterations i j width height))))))
+        (multiple-value-call #'set-pixel-png png i j (black-and-white iters iterations i j width height))))))
 
 (defun make-radial-julia (&key
                             (c #C(0.25 0.25))
@@ -182,6 +182,7 @@
                  (tmax (* 2 pi))
                  (fps 30)
                  (thread-count 4)
+                 (fft-window-size 64)
                  (change-direction-prob 0.005)
                  (lower-bound (complex -1.0 -1.0))
                  (upper-bound (complex 1.0 1.0)))
@@ -204,7 +205,7 @@
          (current-location start-point)
          (song-duration (mp3-file-duration-in-seconds the-mp3))
          (total-frames (ceiling (* song-duration fps)))
-         (fft-window-size 1024)
+         
          )
     (declare 
              (type (complex double-float) current-location)
@@ -224,9 +225,9 @@
                (left-fft-data (bordeaux-fft:windowed-fft (mp3-file-left-channel the-mp3) win-center fft-window-size))
                (right-fft-data (bordeaux-fft:windowed-fft (mp3-file-right-channel the-mp3) win-center fft-window-size)))
 
-          (incf current-location (complex (/ (* real-dir (abs (aref left-fft-data 3))) fft-window-size)
-                                          (/ (* imag-dir (abs (aref right-fft-data 3))) fft-window-size)))
-
+          (incf current-location (complex (/ (* real-dir (abs (aref left-fft-data 2))) fft-window-size)
+                                          (/ (* imag-dir (abs (aref right-fft-data 2))) fft-window-size)))
+          
           (when (> change-direction-prob (random 1.0))
             (setf real-dir (- real-dir)))
 
@@ -262,3 +263,26 @@
 
 
 
+(defun make-movie (directory mp3-name final-name tmp-name &optional (remove-tmp t) (bit-rate (* 4 2014)))
+  "Run ffmpeg to create a movie with audio."
+  (if (probe-file tmp-name)
+      (delete-file tmp-name))
+
+  (let ((movie-command
+         (format nil 
+                 "ffmpeg -r 30 -i \"~aframe%08d.png\" -b ~a -q 4 \"~a\""
+                 directory bit-rate tmp-name))
+        (audio-command
+         (format nil
+                 "ffmpeg -i \"~a\" -i \"~a\" -codec copy -shortest \"~a\""
+                 tmp-name mp3-name final-name)))
+    
+    (format t "~a~%" movie-command)
+    (uiop:run-program movie-command)
+    (if (probe-file final-name)
+        (delete-file final-name))
+
+    (format t "~a~%" audio-command)
+    (uiop:run-program audio-command)
+    (if remove-tmp
+        (delete-file tmp-name))))
