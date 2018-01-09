@@ -172,7 +172,7 @@
 (defun rj-fft (&key
                  (mp3-file-name)
                  (output-directory "/Users/jeremiahlarocco/images/fractals/julia-animation/")
-                 (start-point (complex (- (random 1.0) 0.75) (random 0.5)))
+                 (start-point #C(0.31520945078498014 0.374594080698711))
                  (width 800)
                  (height 800)
                  (iterations 80)
@@ -184,14 +184,17 @@
                  (thread-count 4)
                  (fft-window-size 64)
                  (change-direction-prob 0.005)
-                 (lower-bound (complex -1.0 -1.0))
-                 (upper-bound (complex 1.0 1.0)))
+                 (real-min -0.5)
+                 (real-max 0.5)
+                 (imag-min -0.5)
+                 (imag-max 0.5))
   
   (declare (type fixnum width height frame-count iterations thread-count)
            (type simple-string output-directory mp3-file-name)
-           (type (complex double-float) start-point lower-bound upper-bound)
+           (type (complex double-float) start-point)
+           (type double-float real-min real-max imag-min imag-max)
            (type double-float rmin rmax tmin tmax)
-           (ignorable upper-bound lower-bound))
+           )
   (let* (
          (real-dir-name (ensure-directories-exist
                         (if (char=  #\/ (aref output-directory (- (length output-directory) 1)))
@@ -225,29 +228,34 @@
                (left-fft-data (bordeaux-fft:windowed-fft (mp3-file-left-channel the-mp3) win-center fft-window-size))
                (right-fft-data (bordeaux-fft:windowed-fft (mp3-file-right-channel the-mp3) win-center fft-window-size)))
 
-          (incf current-location (complex (/ (* real-dir (abs (aref left-fft-data 2))) fft-window-size)
-                                          (/ (* imag-dir (abs (aref right-fft-data 2))) fft-window-size)))
-          
+          (incf current-location (/ (+ (aref left-fft-data 1) (aref right-fft-data 1)) fft-window-size))
+          ;; (incf current-location (complex (/ (* real-dir (abs (aref left-fft-data 2))) fft-window-size)
+          ;;                                 (/ (* imag-dir (abs (aref right-fft-data 2))) fft-window-size)))
+
+          (format t "Drawing Julia set: ~a~%" current-location)
           (when (> change-direction-prob (random 1.0))
             (setf real-dir (- real-dir)))
 
           (when (> change-direction-prob (random 1.0))
             (setf imag-dir (- imag-dir)))
 
-          (when (> (realpart current-location) (realpart upper-bound))
+          (when (> (realpart current-location) real-max)
             (format t "Reversing real-dir~%")
+            (setf current-location (complex  real-max (imagpart current-location)))
             (setf real-dir (- real-dir)))
-          (when (< (realpart current-location) (realpart lower-bound))
+          (when (< (realpart current-location) real-min)
             (format t "Reversing real-dir~%")
+            (setf current-location (complex real-min (imagpart current-location)))
             (setf real-dir (- real-dir)))
 
-          (when (> (imagpart current-location) (imagpart upper-bound))
+          (when (> (imagpart current-location) imag-max)
             (format t "Reversing imag-dir~%")
+            (setf current-location (complex (realpart current-location) imag-max))
             (setf imag-dir (- imag-dir)))
-          (when (< (imagpart current-location) (imagpart lower-bound))
+          (when (< (imagpart current-location) imag-min)
             (format t "Reversing imag-dir~%")
+            (setf current-location (complex (realpart current-location) imag-min))
             (setf imag-dir (- imag-dir)))
-
           (format t "Drawing Julia set: ~a~%" current-location)
           (format outf "~a~%" current-location)
           (make-radial-julia :file-name output-file-name
