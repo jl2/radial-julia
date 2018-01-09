@@ -43,6 +43,17 @@
             (truncate (+ (* 127 (sin (* 8 pi tval))) 127))
             (truncate (+ (* 127 (cos (* pi tval))) 127)))))
 
+(defun new-colors (iters iterations i j width height)
+  (declare (ignorable iters iterations i j width height))
+  (declare (type fixnum iters iterations i j width height))
+  (let ((rem (mod iters 7))
+        (tval (/ (coerce iters 'double-float) (coerce iterations 'double-float) 1.0)))
+    (if (= iters iterations)
+        (values 0 0 0)
+        (values (truncate (* 36 rem))
+                (truncate (* 13 rem))
+                (truncate (+ (* 127 (cos (* 2 tval))) 127))))))
+
 (defun draw-radial-julia-line (i png c width height rmin rmax tmin tmax iterations)
   (declare (type fixnum i width height iterations)
            (type (complex double-float) c)
@@ -64,7 +75,7 @@
                         (type double-float tp))
                )))
         (declare (type fixnum iters))
-        (multiple-value-call #'set-pixel-png png i j (black-and-white iters iterations i j width height))))))
+        (multiple-value-call #'set-pixel-png png i j (new-colors iters iterations i j width height))))))
 
 (defun make-radial-julia (&key
                             (c #C(0.25 0.25))
