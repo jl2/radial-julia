@@ -14,5 +14,7 @@
 
    #:make-movie
 
+   #:compare-iterations
+
    ))
 

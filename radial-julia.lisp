@@ -46,7 +46,7 @@
 (defun new-colors (iters iterations i j width height)
   (declare (ignorable iters iterations i j width height))
   (declare (type fixnum iters iterations i j width height))
-  (let ((rem (mod iters 7))
+  (let ((rem (mod iters 5))
         (tval (/ (coerce iters 'double-float) (coerce iterations 'double-float) 1.0)))
     (if (= iters iterations)
         (values 0 0 0)
@@ -64,6 +64,7 @@
       
       (declare (type fixnum j)
                (type double-float rp))
+      
       (let ((iters
              (do* ((tp (j-map-val j width tmax tmin))
                    (cp (complex (* rp (sin tp)) (* rp (cos tp))) (+ (* cp cp) c))
@@ -71,8 +72,9 @@
                   ((or (>= iter iterations) (> (abs cp) 4.0)) iter)
                (declare (type fixnum iter)
                         (type (complex double-float) cp)
-                        (type fixnum iter)
-                        (type double-float tp))
+                        
+                        (type double-float tp)
+                        (dynamic-extent iter))
                )))
         (declare (type fixnum iters))
         (multiple-value-call #'set-pixel-png png i j (new-colors iters iterations i j width height))))))
@@ -197,20 +199,22 @@
                  (change-direction-prob 0.005)
                  (real-min -0.5)
                  (real-max 0.5)
+                 (max-frames nil)
+                 (max-duration nil)
                  (imag-min -0.5)
                  (imag-max 0.5))
   
   (declare (type fixnum width height frame-count iterations thread-count)
+
            (type simple-string output-directory mp3-file-name)
            (type (complex double-float) start-point)
            (type double-float real-min real-max imag-min imag-max)
            (type double-float rmin rmax tmin tmax)
            )
-  (let* (
-         (real-dir-name (ensure-directories-exist
-                        (if (char=  #\/ (aref output-directory (- (length output-directory) 1)))
-                            output-directory
-                            (concatenate 'string output-directory "/"))))
+  (let* ((real-dir-name (ensure-directories-exist
+                         (if (char=  #\/ (aref output-directory (- (length output-directory) 1)))
+                             output-directory
+                             (concatenate 'string output-directory "/"))))
          (description-file-name (format nil "~adescription.lisp" real-dir-name))
 
          (the-mp3 (read-mp3-file mp3-file-name))
@@ -218,12 +222,14 @@
          (imag-dir 1.0)
          (current-location start-point)
          (song-duration (mp3-file-duration-in-seconds the-mp3))
-         (total-frames (ceiling (* song-duration fps)))
-         
-         )
+         (total-frames (if max-frames
+                           max-frames
+                           (if max-duration
+                               (* fps max-duration)
+                               (ceiling (* song-duration fps))))))
     (declare 
-             (type (complex double-float) current-location)
-             (type simple-string real-dir-name description-file-name))
+     (type (complex double-float) current-location)
+     (type simple-string real-dir-name description-file-name))
 
     (format t "Creating animation with ~a frames...~%" total-frames)
 
@@ -267,7 +273,6 @@
             (format t "Reversing imag-dir~%")
             (setf current-location (complex (realpart current-location) imag-min))
             (setf imag-dir (- imag-dir)))
-          (format t "Drawing Julia set: ~a~%" current-location)
           (format outf "~a~%" current-location)
           (make-radial-julia :file-name output-file-name
                              :width width :height height
@@ -305,3 +310,16 @@
     (uiop:run-program audio-command)
     (if remove-tmp
         (delete-file tmp-name))))
+
+
+(defun compare-iterations ()
+  (dotimes (i 20)
+    (let ((i-count (* (+ 1 i) 20)))
+      (format t "Using ~a iterations~%" i-count)
+      (time (rj:rj-fft :mp3-file-name "/Users/jeremiahlarocco/Music/Amazon MP3/Weird Owl/Ever The Silver Cord Be Loosed/01-03- 13 Arrows, 13 Stars.mp3"
+                       :output-directory (format nil "/Users/jeremiahlarocco/images/fractals/iters~4,'0d/" i-count)
+                       :iterations i-count
+                       :max-frames 10
+                       :fft-window-size 512
+                       :width (/ 2880 4)
+                       :height (/ 1800 4))))))
